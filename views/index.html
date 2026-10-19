@@ -23,6 +23,7 @@
       <div class="stat accent"><b id="statOpen">0</b><span>open</span></div>
       <div class="stat good"><b id="statDoneToday">0</b><span>done today</span></div>
       <div class="stat warn"><b id="statCarried">0</b><span>carried over</span></div>
+      <div class="stat danger"><b id="statDue">0</b><span>due / overdue</span></div>
     </div>
     <div class="daystrip" id="dayStrip"></div>
   </header>
@@ -32,6 +33,7 @@
       <span class="pri-dot"></span><span id="priPickLabel">Low</span>
     </button>
     <input type="text" id="newTaskInput" placeholder="Add a task for today…" maxlength="300" />
+    <input type="date" id="newTaskDue" class="due-pick" title="Due date (optional)" aria-label="Due date (optional)" />
     <button class="add" id="addBtn" disabled>Add</button>
   </div>
 

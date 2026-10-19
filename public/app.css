@@ -83,6 +83,7 @@
   .stat.accent b{ color:var(--accent); }
   .stat.warn b{ color:var(--warn); }
   .stat.good b{ color:var(--good); }
+  .stat.danger b{ color:var(--danger); }
   .stat-badge{
     font-family:var(--font-mono); font-size:10.5px; font-weight:700; letter-spacing:0.02em;
     padding:1px 6px; border-radius:999px; background:var(--danger-soft); color:var(--danger);
@@ -294,6 +295,9 @@
     border-radius:999px; background:var(--surface-2); color:var(--text-muted);
   }
   .badge.carry{ background:rgba(180,116,14,0.15); color:var(--warn); }
+  .badge.due-overdue{ background:var(--danger-soft); color:var(--danger); font-weight:700; }
+  .badge.due-today{ background:var(--warn-soft); color:var(--warn); font-weight:700; }
+  .badge.due-soon{ background:var(--accent-soft); color:var(--accent); }
   .task-actions{ flex:none; display:flex; gap:4px; align-items:center; }
   .icon-btn{
     border:none; background:none; color:var(--text-faint); cursor:pointer; padding:5px; border-radius:7px;
@@ -472,4 +476,22 @@
   .login-btn[hidden]{ display:none; }
   .login-error{ margin:0; padding:10px 12px; border-radius:10px; background:var(--danger-soft); color:var(--danger); font-size:13px; }
   .login-note{ margin:0; font-size:12px; color:var(--text-faint); }
+
+  /* ---------- due dates ---------- */
+  .due-pick{
+    flex:none; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--surface-2);
+    color:var(--text-muted); font:500 12.5px var(--font-body); padding:0 8px; color-scheme:light dark;
+  }
+  .due-edit{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px; }
+  .due-edit input[type="date"]{
+    height:30px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2);
+    color:var(--text); font:500 12.5px var(--font-body); padding:0 8px; color-scheme:light dark;
+  }
+  .due-edit .due-clear{ border:none; background:none; color:var(--text-faint); font:inherit; font-size:12px; cursor:pointer; text-decoration:underline; }
+  .icon-btn.due-btn.has{ color:var(--accent); }
+  @media (max-width:520px){
+    .composer{ flex-wrap:wrap; }
+    .composer input[type="text"]{ flex-basis:100%; order:-1; padding:8px 4px; }
+    .composer .due-pick{ flex:1; }
+  }
 

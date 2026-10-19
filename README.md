@@ -14,6 +14,7 @@ A task organizer that **automatically carries undone tasks forward into today's 
 
 - **Automatic rollover**: open tasks from earlier days show on Today with a "since <date> · Nd" badge
 - **Boards**: separate lists (e.g. Official / Personal) with rename, delete, and bulk move between boards
+- **Due dates**: optional per task. Shows "due today", "due tomorrow" or "overdue Nd". Overdue and due-today tasks move to the top, and a "due / overdue" counter keeps them visible
 - **Priorities**: High / Medium / Low, sorted automatically, or drag to reorder by hand
 - **Notes**: a comment on each task
 - **History**: see what was on the list on any past day

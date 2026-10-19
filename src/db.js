@@ -35,6 +35,7 @@ const SCHEMA = [
      manual_order integer NOT NULL DEFAULT 0
    )`,
   `CREATE INDEX IF NOT EXISTS tasks_user_idx ON tasks(user_id)`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date text`,
   `CREATE TABLE IF NOT EXISTS reviews (
      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
      id text NOT NULL,

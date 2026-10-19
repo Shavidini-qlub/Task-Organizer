@@ -82,6 +82,18 @@ test("create, update, carry over and complete a task", async () => {
   assert.equal(review.body.notes, "Good week");
 });
 
+test("due dates can be set, changed and cleared", async () => {
+  const call = await signedIn("frank");
+  const b = (await call("POST", "/api/boards", { name: "Due" })).body;
+  const t = (await call("POST", "/api/tasks", { text: "Reply to finance", board: b.id, createdDate: "2026-10-19", dueDate: "2026-10-21" })).body;
+  assert.equal(t.dueDate, "2026-10-21");
+  const none = (await call("POST", "/api/tasks", { text: "No deadline", board: b.id, createdDate: "2026-10-19" })).body;
+  assert.equal(none.dueDate, null);
+  assert.equal((await call("PATCH", `/api/tasks/${t.id}`, { dueDate: "2026-10-18" })).body.dueDate, "2026-10-18");
+  assert.equal((await call("PATCH", `/api/tasks/${t.id}`, { dueDate: null })).body.dueDate, null);
+  assert.equal((await call("PATCH", `/api/tasks/${t.id}`, { dueDate: "tomorrow" })).status, 400);
+});
+
 test("users cannot see or change each other's data", async () => {
   const alice = await signedIn("alice2");
   const bob = await signedIn("bob");

@@ -26,6 +26,7 @@ const taskCreate = z.object({
   comment: z.string().max(500).default(""),
   board: uuid,
   createdDate: dateStr,
+  dueDate: dateStr.nullable().default(null),
 });
 const taskPatch = z.strictObject({
   text: z.string().trim().min(1).max(300).optional(),
@@ -34,6 +35,7 @@ const taskPatch = z.strictObject({
   comment: z.string().max(500).optional(),
   board: uuid.optional(),
   doneDate: dateStr.nullable().optional(),
+  dueDate: dateStr.nullable().optional(),
   manualOrder: smallInt.optional(),
 });
 const reviewPut = z.object({
@@ -42,13 +44,13 @@ const reviewPut = z.object({
   reviewedAt: z.number().int().positive().nullable().default(null),
 });
 
-const TASK_COLS = { text: "text", status: "status", priority: "priority", comment: "comment", board: "board_id", doneDate: "done_date", manualOrder: "manual_order" };
+const TASK_COLS = { text: "text", status: "status", priority: "priority", comment: "comment", board: "board_id", doneDate: "done_date", dueDate: "due_date", manualOrder: "manual_order" };
 const BOARD_COLS = { name: "name", order: "sort_order", manualSort: "manual_sort" };
 
 const toBoard = (r) => ({ id: r.id, name: r.name, createdAt: Number(r.created_at), order: r.sort_order, manualSort: r.manual_sort });
 const toTask = (r) => ({
   id: r.id, text: r.text, status: r.status, priority: r.priority, comment: r.comment, board: r.board_id,
-  createdDate: r.created_date, doneDate: r.done_date, createdAt: Number(r.created_at), manualOrder: r.manual_order,
+  createdDate: r.created_date, doneDate: r.done_date, dueDate: r.due_date, createdAt: Number(r.created_at), manualOrder: r.manual_order,
 });
 const toReview = (r) => ({ id: r.id, board: r.board_id, notes: r.notes, reviewedAt: r.reviewed_at == null ? null : Number(r.reviewed_at) });
 
@@ -131,9 +133,9 @@ export function apiRouter(db) {
     const [{ n }] = await db.query("SELECT count(*)::int AS n FROM tasks WHERE user_id = $1", [uid]);
     if (n >= MAX_TASKS) throw new HttpError(409, "task_limit");
     const rows = await db.query(
-      `INSERT INTO tasks (id, user_id, board_id, text, status, priority, comment, created_date, created_at)
-       VALUES ($1, $2, $3, $4, 'open', $5, $6, $7, $8) RETURNING *`,
-      [crypto.randomUUID(), uid, body.board, body.text, body.priority, body.comment.trim(), body.createdDate, Date.now()]
+      `INSERT INTO tasks (id, user_id, board_id, text, status, priority, comment, created_date, due_date, created_at)
+       VALUES ($1, $2, $3, $4, 'open', $5, $6, $7, $8, $9) RETURNING *`,
+      [crypto.randomUUID(), uid, body.board, body.text, body.priority, body.comment.trim(), body.createdDate, body.dueDate, Date.now()]
     );
     res.status(201).json(toTask(rows[0]));
   }));

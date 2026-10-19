@@ -121,6 +121,7 @@
     try { localStorage.setItem("rollover_board_v1", id); } catch(e){}
     editingTaskId = null;
     openCommentId = null;
+    dueEditId = null;
     boardFormOpen = false;
     renamingBoardId = null;
     closeConfirm();
@@ -256,7 +257,7 @@
     try { localStorage.setItem(key, JSON.stringify(list)); } catch(e){}
   }
 
-  function render(){ renderBoardSwitch(); renderStats(); renderStrip(); renderToday(); renderHistory(); renderCompleted(); renderReview(); renderMonthReview(); renderModal(); renderPriorityMenu(); renderBoardMoveMenu(); focusEditInputIfNeeded(); focusCommentInputIfNeeded(); }
+  function render(){ renderBoardSwitch(); renderStats(); renderStrip(); renderToday(); renderHistory(); renderCompleted(); renderReview(); renderMonthReview(); renderModal(); renderPriorityMenu(); renderBoardMoveMenu(); focusEditInputIfNeeded(); focusCommentInputIfNeeded(); focusDueInputIfNeeded(); }
 
   // ---------- confirm modal ----------
   // A custom in-page popup (not window.confirm, which sandboxed artifact
@@ -519,6 +520,12 @@
       var boardEl = document.querySelector(".board-new-input");
       if (boardEl && !boardEl.contains(e.target)) commitNewBoard(boardEl.value);
     }
+    // The due-date editor closes on any click outside it (its own toggle
+    // button handles itself).
+    if (dueEditId && !e.target.closest(".due-btn")){
+      var dueBox = document.querySelector(".due-edit");
+      if (dueBox && !dueBox.contains(e.target)) commitDueEdit();
+    }
     // A click on a priority dot is left to its own mousedown handler below
     // (it toggles the popup); anything else outside the open popup closes it.
     if (priorityMenuTarget && !e.target.closest(".pri-pick") && !e.target.closest(".pri-cycle")){
@@ -548,7 +555,10 @@
   async function addTask(text){
     text = text.trim();
     if (!text || !currentBoard) return;
-    var body = { text: text, status: "open", priority: composerPriority, comment: "", board: currentBoard, createdDate: TODAY, doneDate: null, createdAt: Date.now() };
+    var dueEl = document.getElementById("newTaskDue");
+    var dueDate = dueEl.value || null;
+    dueEl.value = "";
+    var body = { text: text, status: "open", priority: composerPriority, comment: "", board: currentBoard, createdDate: TODAY, doneDate: null, dueDate: dueDate, createdAt: Date.now() };
     if (backend === "db"){
       await col.add(body);
     } else {
@@ -734,11 +744,76 @@
     }
   }
 
+  // ---------- due dates ----------
+  // A task's due date is optional. Open tasks show how close it is; the
+  // badge and the "due / overdue" stat update by themselves as days pass.
+  function isDueNow(t){
+    return t.status === "open" && !!t.dueDate && t.dueDate <= TODAY;
+  }
+  // asOfDay is set for History's frozen rows, which just show the date.
+  function dueInfo(t, asOfDay){
+    if (!t.dueDate) return null;
+    if (t.status !== "open" || asOfDay) return { cls: "", label: "due " + fmtShort(t.dueDate) };
+    var diff = daysBetween(TODAY, t.dueDate);
+    if (diff < 0) return { cls: "due-overdue", label: "overdue " + (-diff) + "d · due " + fmtShort(t.dueDate) };
+    if (diff === 0) return { cls: "due-today", label: "due today" };
+    if (diff === 1) return { cls: "due-soon", label: "due tomorrow" };
+    if (diff <= 6) return { cls: "due-soon", label: "due " + WEEKDAY[new Date(t.dueDate + "T00:00:00").getDay()] + " " + fmtShort(t.dueDate) };
+    return { cls: "", label: "due " + fmtShort(t.dueDate) };
+  }
+  async function setTaskDue(id, value){
+    var dueDate = /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value : null;
+    if (backend === "db"){
+      await col.doc(id).update({ dueDate: dueDate });
+    } else {
+      var t = tasks.find(function(x){ return x.id === id; });
+      if (t){ t.dueDate = dueDate; localSave("rollover_tasks_v1", tasks); render(); }
+    }
+  }
+  var dueEditId = null; // task whose due-date editor is open
+  // Saves whatever is in the open editor and closes it. Saving waits until
+  // the editor closes (Enter, click away, or the calendar button again):
+  // saving on every change would re-render mid-typing and lock in a
+  // half-typed date.
+  function commitDueEdit(){
+    if (!dueEditId) return;
+    var id = dueEditId;
+    var el = document.querySelector('.due-edit input[data-id="' + id + '"]');
+    dueEditId = null;
+    var t = tasks.find(function(x){ return x.id === id; });
+    if (el && el.value && t && el.value !== t.dueDate) setTaskDue(id, el.value);
+    render();
+  }
+  function toggleDueEdit(id){
+    var wasOpen = dueEditId === id;
+    commitDueEdit();
+    if (wasOpen) return;
+    commitOpenComment();
+    openCommentId = null;
+    dueEditId = id;
+    render();
+  }
+  function focusDueInputIfNeeded(){
+    if (!dueEditId) return;
+    var el = document.querySelector('.due-edit input[data-id="' + dueEditId + '"]');
+    if (el) el.focus();
+  }
+
   // ---------- derived views ----------
   function priorityCompare(a, b){
+    // Open tasks that are overdue or due today come first, so deadlines
+    // can't hide below newer work.
+    var ua = isDueNow(a) ? 0 : 1, ub = isDueNow(b) ? 0 : 1;
+    if (ua !== ub) return ua - ub;
     var ra = PRIORITY_RANK[normalizePriority(a.priority)];
     var rb = PRIORITY_RANK[normalizePriority(b.priority)];
     if (ra !== rb) return ra - rb;
+    // Then the nearest due date; tasks without one go after those with one.
+    if ((a.dueDate || "") !== (b.dueDate || "")){
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate < b.dueDate ? -1 : 1;
+    }
     // Within the same priority, the most recently added task shows first.
     if (a.createdDate !== b.createdDate) return a.createdDate < b.createdDate ? 1 : -1;
     return b.createdAt - a.createdAt;
@@ -930,6 +1005,9 @@
   function commentSvg(){
     return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h11A1.5 1.5 0 0 1 17 5.5v6A1.5 1.5 0 0 1 15.5 13H8l-3.5 3v-3H4.5A1.5 1.5 0 0 1 3 11.5Z"/></svg>';
   }
+  function calendarSvg(){
+    return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="13" height="12" rx="2"/><path d="M3.5 8.5h13M7 3v3M13 3v3"/></svg>';
+  }
   function plusSvg(){
     return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 4v12M4 10h12"/></svg>';
   }
@@ -1038,6 +1116,13 @@
       bpm.textContent = "Medium";
       meta.appendChild(bpm);
     }
+    var due = dueInfo(t, opts.frozen ? opts.day : null);
+    if (due){
+      var bd = document.createElement("span");
+      bd.className = "badge" + (due.cls ? " " + due.cls : "");
+      bd.textContent = due.label;
+      meta.appendChild(bd);
+    }
     if (carried){
       var n = daysBetween(t.createdDate, TODAY);
       var b = document.createElement("span");
@@ -1062,6 +1147,30 @@
       meta.appendChild(b3);
     }
     if (meta.childNodes.length) body.appendChild(meta);
+
+    if (!opts.frozen && dueEditId === t.id){
+      var dueWrap = document.createElement("div");
+      dueWrap.className = "due-edit";
+      var dueInput = document.createElement("input");
+      dueInput.type = "date";
+      dueInput.setAttribute("data-id", t.id);
+      dueInput.setAttribute("aria-label", "Due date");
+      dueInput.value = t.dueDate || "";
+      dueInput.addEventListener("keydown", function(e){
+        if (e.key === "Enter"){ e.preventDefault(); commitDueEdit(); }
+        else if (e.key === "Escape"){ e.preventDefault(); dueEditId = null; render(); }
+      });
+      dueWrap.appendChild(dueInput);
+      if (t.dueDate){
+        var clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "due-clear";
+        clearBtn.textContent = "Remove due date";
+        clearBtn.addEventListener("mousedown", function(e){ e.preventDefault(); dueEditId = null; setTaskDue(t.id, null); render(); });
+        dueWrap.appendChild(clearBtn);
+      }
+      body.appendChild(dueWrap);
+    }
 
     var hasComment = !!(t.comment && t.comment.trim());
     var commentOpen = !opts.frozen && openCommentId === t.id;
@@ -1146,6 +1255,14 @@
       // instead of racing a blur that already cleared it out from under it.
       commentBtn.addEventListener("mousedown", function(e){ e.preventDefault(); toggleComment(t.id); });
       actions.appendChild(commentBtn);
+      if (!isDone){
+        var dueBtn = document.createElement("button");
+        dueBtn.className = "icon-btn due-btn" + (t.dueDate ? " has" : "");
+        dueBtn.title = t.dueDate ? "Change due date" : "Set a due date";
+        dueBtn.innerHTML = calendarSvg();
+        dueBtn.addEventListener("mousedown", function(e){ e.preventDefault(); toggleDueEdit(t.id); });
+        actions.appendChild(dueBtn);
+      }
       var priBtn = document.createElement("button");
       priBtn.className = "pri-cycle";
       priBtn.setAttribute("data-pri", priority);
@@ -1295,6 +1412,7 @@
     document.getElementById("statOpen").textContent = openTasksSorted().length;
     document.getElementById("statDoneToday").textContent = doneTodaySorted().length;
     document.getElementById("statCarried").textContent = openTasksSorted().filter(function(t){ return t.createdDate !== TODAY; }).length;
+    document.getElementById("statDue").textContent = openTasksSorted().filter(isDueNow).length;
   }
 
   function renderStrip(){
@@ -1845,6 +1963,7 @@
     }
     closeConfirm();
     priorityMenuTarget = null;
+    dueEditId = null;
     selectMode = false;
     selectedTaskIds = {};
     boardMoveMenuTarget = null;
@@ -1922,6 +2041,7 @@
           board: data.board || null,
           createdDate: data.createdDate || TODAY,
           doneDate: data.doneDate || null,
+          dueDate: data.dueDate || null,
           createdAt: data.createdAt || 0,
           manualOrder: typeof data.manualOrder === "number" ? data.manualOrder : 0
         };
