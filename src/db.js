@@ -36,6 +36,29 @@ const SCHEMA = [
    )`,
   `CREATE INDEX IF NOT EXISTS tasks_user_idx ON tasks(user_id)`,
   `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_date text`,
+  // Snooze: hidden from Today until this date. Repeat: daily/weekdays/weekly/
+  // monthly. spawned_next_id: the next copy created when this one was done.
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS snoozed_until text`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS repeat text`,
+  `ALTER TABLE tasks ADD COLUMN IF NOT EXISTS spawned_next_id uuid`,
+  `CREATE TABLE IF NOT EXISTS ai_usage (
+     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+     day text NOT NULL,
+     count integer NOT NULL DEFAULT 0,
+     PRIMARY KEY (user_id, day)
+   )`,
+  `CREATE TABLE IF NOT EXISTS reminders (
+     user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+     enabled boolean NOT NULL DEFAULT false,
+     time_hhmm text NOT NULL DEFAULT '09:00',
+     timezone text NOT NULL,
+     weekdays_only boolean NOT NULL DEFAULT true,
+     destination text NOT NULL DEFAULT 'dm' CHECK (destination IN ('dm', 'channel')),
+     channel_id text,
+     channel_name text,
+     slack_user_id text,
+     last_sent_day text
+   )`,
   `CREATE TABLE IF NOT EXISTS reviews (
      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
      id text NOT NULL,

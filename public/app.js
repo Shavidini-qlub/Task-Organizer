@@ -121,7 +121,7 @@
     try { localStorage.setItem("rollover_board_v1", id); } catch(e){}
     editingTaskId = null;
     openCommentId = null;
-    dueEditId = null;
+    scheduleEditId = null;
     boardFormOpen = false;
     renamingBoardId = null;
     closeConfirm();
@@ -520,11 +520,11 @@
       var boardEl = document.querySelector(".board-new-input");
       if (boardEl && !boardEl.contains(e.target)) commitNewBoard(boardEl.value);
     }
-    // The due-date editor closes on any click outside it (its own toggle
+    // The schedule editor closes (and saves) on any click outside it (its own toggle
     // button handles itself).
-    if (dueEditId && !e.target.closest(".due-btn")){
-      var dueBox = document.querySelector(".due-edit");
-      if (dueBox && !dueBox.contains(e.target)) commitDueEdit();
+    if (scheduleEditId && !e.target.closest(".due-btn")){
+      var dueBox = document.querySelector(".schedule-edit");
+      if (dueBox && !dueBox.contains(e.target)) commitScheduleEdit();
     }
     // A click on a priority dot is left to its own mousedown handler below
     // (it toggles the popup); anything else outside the open popup closes it.
@@ -761,42 +761,142 @@
     if (diff <= 6) return { cls: "due-soon", label: "due " + WEEKDAY[new Date(t.dueDate + "T00:00:00").getDay()] + " " + fmtShort(t.dueDate) };
     return { cls: "", label: "due " + fmtShort(t.dueDate) };
   }
-  async function setTaskDue(id, value){
-    var dueDate = /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? value : null;
+  async function updateTask(id, patch){
     if (backend === "db"){
-      await col.doc(id).update({ dueDate: dueDate });
+      await col.doc(id).update(patch);
     } else {
       var t = tasks.find(function(x){ return x.id === id; });
-      if (t){ t.dueDate = dueDate; localSave("rollover_tasks_v1", tasks); render(); }
+      if (t){ Object.assign(t, patch); localSave("rollover_tasks_v1", tasks); render(); }
     }
   }
-  var dueEditId = null; // task whose due-date editor is open
-  // Saves whatever is in the open editor and closes it. Saving waits until
-  // the editor closes (Enter, click away, or the calendar button again):
-  // saving on every change would re-render mid-typing and lock in a
-  // half-typed date.
-  function commitDueEdit(){
-    if (!dueEditId) return;
-    var id = dueEditId;
-    var el = document.querySelector('.due-edit input[data-id="' + id + '"]');
-    dueEditId = null;
+
+  // ---------- snooze + repeat ----------
+  // A snoozed task stays off Today until its date, then comes back on its own
+  // (nothing runs at midnight; it's worked out from the date, like
+  // carry-over). It wakes early if its due date arrives first, so snoozing
+  // can never hide a deadline.
+  function isSnoozed(t){
+    return t.status === "open" && !!t.snoozedUntil && t.snoozedUntil > TODAY && !isDueNow(t);
+  }
+  // Repeating tasks: when one is completed, the server adds the next copy,
+  // snoozed until its day.
+  var REPEAT_OPTIONS = [["", "Doesn't repeat"], ["daily", "Every day"], ["weekdays", "Every weekday"], ["weekly", "Every week"], ["monthly", "Every month"]];
+  function fmtDay(dateStr){
+    var diff = daysBetween(TODAY, dateStr);
+    if (diff === 1) return "tomorrow";
+    if (diff > 1 && diff <= 6) return WEEKDAY[new Date(dateStr + "T00:00:00").getDay()] + " " + fmtShort(dateStr);
+    return fmtShort(dateStr);
+  }
+  function nextMondayFrom(day){
+    var dow = new Date(day + "T00:00:00").getDay();
+    return dayOffset(day, dow === 1 ? 7 : ((8 - dow) % 7 || 7));
+  }
+
+  // ---------- schedule editor (due date · snooze · repeat) ----------
+  var scheduleEditId = null;       // task whose schedule editor is open
+  var scheduleJustOpened = false;  // focus the first field only when it opens
+  // Typed dates are saved when the editor closes (Enter, click away, or the
+  // calendar button again): saving on every change would re-render mid-typing
+  // and lock in a half-typed date. Buttons and the repeat menu save at once.
+  function schedulePatchFromEditor(t){
+    var box = document.querySelector('.schedule-edit[data-id="' + t.id + '"]');
+    var patch = {};
+    if (!box) return patch;
+    var due = box.querySelector(".due-input").value;
+    if (due && due !== t.dueDate) patch.dueDate = due;
+    var snooze = box.querySelector(".snooze-input").value;
+    if (snooze && snooze > TODAY && snooze !== t.snoozedUntil) patch.snoozedUntil = snooze;
+    return patch;
+  }
+  function commitScheduleEdit(extra, keepOpen){
+    if (!scheduleEditId) return;
+    var id = scheduleEditId;
     var t = tasks.find(function(x){ return x.id === id; });
-    if (el && el.value && t && el.value !== t.dueDate) setTaskDue(id, el.value);
+    var patch = t ? Object.assign(schedulePatchFromEditor(t), extra || {}) : {};
+    if (!keepOpen) scheduleEditId = null;
+    if (t && Object.keys(patch).length) updateTask(id, patch);
     render();
   }
-  function toggleDueEdit(id){
-    var wasOpen = dueEditId === id;
-    commitDueEdit();
+  function toggleScheduleEdit(id){
+    var wasOpen = scheduleEditId === id;
+    commitScheduleEdit();
     if (wasOpen) return;
     commitOpenComment();
     openCommentId = null;
-    dueEditId = id;
+    scheduleEditId = id;
+    scheduleJustOpened = true;
     render();
   }
   function focusDueInputIfNeeded(){
-    if (!dueEditId) return;
-    var el = document.querySelector('.due-edit input[data-id="' + dueEditId + '"]');
+    if (!scheduleEditId || !scheduleJustOpened) return;
+    scheduleJustOpened = false;
+    var el = document.querySelector('.schedule-edit[data-id="' + scheduleEditId + '"] .due-input');
     if (el) el.focus();
+  }
+  function scheduleEditor(t){
+    var wrap = document.createElement("div");
+    wrap.className = "schedule-edit";
+    wrap.setAttribute("data-id", t.id);
+    function row(label){
+      var r = document.createElement("div");
+      r.className = "sched-row";
+      var l = document.createElement("span");
+      l.className = "sched-label";
+      l.textContent = label;
+      r.appendChild(l);
+      wrap.appendChild(r);
+      return r;
+    }
+    function btn(parent, text, onPick, cls){
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = cls || "sched-chip";
+      b.textContent = text;
+      // mousedown + preventDefault so the typed fields keep their values
+      b.addEventListener("mousedown", function(e){ e.preventDefault(); onPick(); });
+      parent.appendChild(b);
+      return b;
+    }
+    function dateInput(cls, value, label){
+      var i = document.createElement("input");
+      i.type = "date";
+      i.className = cls;
+      i.value = value || "";
+      i.setAttribute("aria-label", label);
+      i.addEventListener("keydown", function(e){
+        if (e.key === "Enter"){ e.preventDefault(); commitScheduleEdit(); }
+        else if (e.key === "Escape"){ e.preventDefault(); scheduleEditId = null; render(); }
+      });
+      return i;
+    }
+
+    var dueRow = row("Due");
+    dueRow.appendChild(dateInput("due-input", t.dueDate, "Due date"));
+    if (t.dueDate) btn(dueRow, "Remove", function(){ commitScheduleEdit({ dueDate: null }); }, "due-clear");
+
+    var snoozeRow = row("Snooze");
+    btn(snoozeRow, "Tomorrow", function(){ commitScheduleEdit({ snoozedUntil: dayOffset(TODAY, 1) }); });
+    btn(snoozeRow, "Monday", function(){ commitScheduleEdit({ snoozedUntil: nextMondayFrom(TODAY) }); });
+    btn(snoozeRow, "Next week", function(){ commitScheduleEdit({ snoozedUntil: dayOffset(TODAY, 7) }); });
+    var snoozeInput = dateInput("snooze-input", isSnoozed(t) ? t.snoozedUntil : "", "Snooze until");
+    snoozeInput.min = dayOffset(TODAY, 1);
+    snoozeRow.appendChild(snoozeInput);
+    if (isSnoozed(t)) btn(snoozeRow, "Unsnooze", function(){ commitScheduleEdit({ snoozedUntil: null }); }, "due-clear");
+
+    var repeatRow = row("Repeat");
+    var sel = document.createElement("select");
+    sel.className = "repeat-select";
+    sel.setAttribute("aria-label", "Repeat");
+    REPEAT_OPTIONS.forEach(function(o){
+      var opt = document.createElement("option");
+      opt.value = o[0];
+      opt.textContent = o[1];
+      if ((t.repeat || "") === o[0]) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener("change", function(){ commitScheduleEdit({ repeat: sel.value || null }, true); });
+    repeatRow.appendChild(sel);
+    return wrap;
   }
 
   // ---------- derived views ----------
@@ -825,7 +925,7 @@
     return tasks.filter(function(t){ return normalizeBoard(t.board) === b; });
   }
   function openCountForBoard(board){
-    return tasksForBoard(board).filter(function(t){ return t.status === "open"; }).length;
+    return tasksForBoard(board).filter(function(t){ return t.status === "open" && !isSnoozed(t); }).length;
   }
   function openTasksSorted(){
     // Tasks added today always sit above carried-over tasks from earlier
@@ -833,11 +933,16 @@
     // unless this board has been switched into manual order (see the manual
     // task ordering section below), in which case each group keeps whatever
     // order was last set by hand instead.
-    var open = tasksForBoard().filter(function(t){ return t.status === "open"; });
+    var open = tasksForBoard().filter(function(t){ return t.status === "open" && !isSnoozed(t); });
     var cmp = isManualOrder() ? manualOrderCompare : priorityCompare;
-    var addedToday = open.filter(function(t){ return t.createdDate === TODAY; }).sort(cmp);
-    var carriedOver = open.filter(function(t){ return t.createdDate !== TODAY; }).sort(cmp);
+    var addedToday = open.filter(function(t){ return t.createdDate >= TODAY; }).sort(cmp);
+    var carriedOver = open.filter(function(t){ return t.createdDate < TODAY; }).sort(cmp);
     return addedToday.concat(carriedOver);
+  }
+  function snoozedTasksSorted(){
+    return tasksForBoard().filter(isSnoozed).sort(function(a, b){
+      return a.snoozedUntil === b.snoozedUntil ? priorityCompare(a, b) : (a.snoozedUntil < b.snoozedUntil ? -1 : 1);
+    });
   }
   function doneTodaySorted(){
     return tasksForBoard().filter(function(t){ return t.status === "done" && t.doneDate === TODAY; })
@@ -953,7 +1058,7 @@
   // whatever order is currently on screen for it — exactly what
   // openTasksSorted() would show for that group right now.
   function currentGroupOrder(t){
-    var open = tasksForBoard().filter(function(x){ return x.status === "open" && (x.createdDate === TODAY) === (t.createdDate === TODAY); });
+    var open = tasksForBoard().filter(function(x){ return x.status === "open" && !isSnoozed(x) && (x.createdDate >= TODAY) === (t.createdDate >= TODAY); });
     return open.sort(isManualOrder() ? manualOrderCompare : priorityCompare);
   }
   async function commitGroupOrder(group){
@@ -969,7 +1074,7 @@
     var dragged = tasks.find(function(x){ return x.id === draggedId; });
     var target = tasks.find(function(x){ return x.id === targetId; });
     if (!dragged || !target) return;
-    if ((dragged.createdDate === TODAY) !== (target.createdDate === TODAY)) return; // no cross-group drops
+    if ((dragged.createdDate >= TODAY) !== (target.createdDate >= TODAY)) return; // no cross-group drops
     var group = currentGroupOrder(dragged);
     var fromIdx = group.findIndex(function(x){ return x.id === draggedId; });
     var toIdx = group.findIndex(function(x){ return x.id === targetId; });
@@ -1017,7 +1122,7 @@
 
   function taskRow(t, opts){
     opts = opts || {};
-    var carried = !opts.frozen && t.status === "open" && t.createdDate !== TODAY;
+    var carried = !opts.frozen && t.status === "open" && t.createdDate < TODAY && !isSnoozed(t);
     var frozenDone = !!opts.frozenDone; // history: shown as done as-of that historical day
     var isDone = opts.frozen ? frozenDone : t.status === "done";
     var priority = normalizePriority(t.priority);
@@ -1123,6 +1228,18 @@
       bd.textContent = due.label;
       meta.appendChild(bd);
     }
+    if (!opts.frozen && isSnoozed(t)){
+      var bz = document.createElement("span");
+      bz.className = "badge snoozed";
+      bz.textContent = "snoozed · back " + fmtDay(t.snoozedUntil);
+      meta.appendChild(bz);
+    }
+    if (t.repeat){
+      var br = document.createElement("span");
+      br.className = "badge repeat";
+      br.textContent = "↻ " + t.repeat;
+      meta.appendChild(br);
+    }
     if (carried){
       var n = daysBetween(t.createdDate, TODAY);
       var b = document.createElement("span");
@@ -1148,29 +1265,7 @@
     }
     if (meta.childNodes.length) body.appendChild(meta);
 
-    if (!opts.frozen && dueEditId === t.id){
-      var dueWrap = document.createElement("div");
-      dueWrap.className = "due-edit";
-      var dueInput = document.createElement("input");
-      dueInput.type = "date";
-      dueInput.setAttribute("data-id", t.id);
-      dueInput.setAttribute("aria-label", "Due date");
-      dueInput.value = t.dueDate || "";
-      dueInput.addEventListener("keydown", function(e){
-        if (e.key === "Enter"){ e.preventDefault(); commitDueEdit(); }
-        else if (e.key === "Escape"){ e.preventDefault(); dueEditId = null; render(); }
-      });
-      dueWrap.appendChild(dueInput);
-      if (t.dueDate){
-        var clearBtn = document.createElement("button");
-        clearBtn.type = "button";
-        clearBtn.className = "due-clear";
-        clearBtn.textContent = "Remove due date";
-        clearBtn.addEventListener("mousedown", function(e){ e.preventDefault(); dueEditId = null; setTaskDue(t.id, null); render(); });
-        dueWrap.appendChild(clearBtn);
-      }
-      body.appendChild(dueWrap);
-    }
+    if (!opts.frozen && !isDone && scheduleEditId === t.id) body.appendChild(scheduleEditor(t));
 
     var hasComment = !!(t.comment && t.comment.trim());
     var commentOpen = !opts.frozen && openCommentId === t.id;
@@ -1257,10 +1352,11 @@
       actions.appendChild(commentBtn);
       if (!isDone){
         var dueBtn = document.createElement("button");
-        dueBtn.className = "icon-btn due-btn" + (t.dueDate ? " has" : "");
-        dueBtn.title = t.dueDate ? "Change due date" : "Set a due date";
+        dueBtn.className = "icon-btn due-btn" + (t.dueDate || isSnoozed(t) || t.repeat ? " has" : "");
+        dueBtn.title = "Due date, snooze, repeat";
+        dueBtn.setAttribute("aria-label", "Due date, snooze, repeat");
         dueBtn.innerHTML = calendarSvg();
-        dueBtn.addEventListener("mousedown", function(e){ e.preventDefault(); toggleDueEdit(t.id); });
+        dueBtn.addEventListener("mousedown", function(e){ e.preventDefault(); toggleScheduleEdit(t.id); });
         actions.appendChild(dueBtn);
       }
       var priBtn = document.createElement("button");
@@ -1411,7 +1507,7 @@
   function renderStats(){
     document.getElementById("statOpen").textContent = openTasksSorted().length;
     document.getElementById("statDoneToday").textContent = doneTodaySorted().length;
-    document.getElementById("statCarried").textContent = openTasksSorted().filter(function(t){ return t.createdDate !== TODAY; }).length;
+    document.getElementById("statCarried").textContent = openTasksSorted().filter(function(t){ return t.createdDate < TODAY; }).length;
     document.getElementById("statDue").textContent = openTasksSorted().filter(isDueNow).length;
   }
 
@@ -1455,6 +1551,7 @@
     }
   }
 
+  var snoozedOpen = false; // the Today tab's "Snoozed & upcoming" section starts collapsed
   function renderToday(){
     var openGroup = document.getElementById("todayOpenGroup");
     var doneGroup = document.getElementById("todayDoneGroup");
@@ -1462,7 +1559,8 @@
     doneGroup.innerHTML = "";
 
     var open = openTasksSorted();
-    if (!open.length && !doneTodaySorted().length){
+    var snoozed = snoozedTasksSorted();
+    if (!open.length && !doneTodaySorted().length && !snoozed.length){
       openGroup.appendChild(emptyState("Nothing on the list", "Add what you want to get done today in the box above."));
       return;
     }
@@ -1529,6 +1627,23 @@
       openGroup.appendChild(ul);
     } else {
       openGroup.appendChild(emptyState("All clear for today", "Nothing open — nice work. Add a new task whenever."));
+    }
+
+    // Snoozed (and upcoming repeats) — tucked away, but always one click from view.
+    if (snoozed.length){
+      var snzBtn = document.createElement("button");
+      snzBtn.type = "button";
+      snzBtn.className = "group-label snooze-toggle";
+      snzBtn.setAttribute("aria-expanded", snoozedOpen ? "true" : "false");
+      snzBtn.textContent = (snoozedOpen ? "▾ " : "▸ ") + "Snoozed & upcoming — " + snoozed.length;
+      snzBtn.onclick = function(){ snoozedOpen = !snoozedOpen; renderToday(); };
+      openGroup.appendChild(snzBtn);
+      if (snoozedOpen){
+        var ulz = document.createElement("ul");
+        ulz.className = "tasklist snoozed-list";
+        snoozed.forEach(function(t){ ulz.appendChild(taskRow(t)); });
+        openGroup.appendChild(ulz);
+      }
     }
 
     var done = doneTodaySorted();
@@ -1963,7 +2078,7 @@
     }
     closeConfirm();
     priorityMenuTarget = null;
-    dueEditId = null;
+    scheduleEditId = null;
     selectMode = false;
     selectedTaskIds = {};
     boardMoveMenuTarget = null;
@@ -2005,11 +2120,267 @@
     window.location.href = "/login";
   });
 
+  // ---------- Claude assistant ----------
+  // "Plan my day" asks the server (which asks Claude) what to tackle first on
+  // this board; "Notes → tasks" turns pasted notes into draft tasks the person
+  // reviews before anything is added. Everything Claude returns is shown as
+  // plain text (textContent), never as HTML.
+  var AI_ERRORS = {
+    daily_limit: "You've reached today's limit for Claude requests. Try again tomorrow.",
+    rate_limited: "That's a lot of requests at once. Wait a minute and try again.",
+    refused: "Claude couldn't help with that one. Try rewording it.",
+    invalid_input: "That input wasn't accepted. Notes can be up to 6,000 characters.",
+    ai_disabled: "Claude features are turned off on this server."
+  };
+  function aiErrorText(code){ return AI_ERRORS[code] || "Claude isn't available right now. Please try again."; }
+  var aiCard = document.getElementById("aiCard");
+  var aiPlanBtn = document.getElementById("aiPlanBtn");
+  var aiNotesBtn = document.getElementById("aiNotesBtn");
+  var aiPlanPanel = document.getElementById("aiPlanPanel");
+  var aiNotesPanel = document.getElementById("aiNotesPanel");
+  var aiNotesInput = document.getElementById("aiNotesInput");
+  var aiDraftBtn = document.getElementById("aiDraftBtn");
+  var aiDraftsEl = document.getElementById("aiDrafts");
+
+  function el(tag, cls, text){
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function priorityBadge(p){
+    return el("span", "badge pri-" + p, PRIORITY_LABEL[p] || "Low");
+  }
+
+  async function initAssistant(){
+    aiCard.hidden = false;
+    var status = await window.TaskApi.aiStatus();
+    if (!status.enabled){
+      aiPlanBtn.disabled = true;
+      aiNotesBtn.disabled = true;
+      document.getElementById("aiOff").hidden = false;
+    }
+  }
+
+  aiPlanBtn.addEventListener("click", async function(){
+    if (!currentBoard) return;
+    aiNotesPanel.hidden = true;
+    aiPlanPanel.hidden = false;
+    aiPlanPanel.innerHTML = "";
+    aiPlanPanel.appendChild(el("p", "ai-status", "Claude is looking at your list…"));
+    aiPlanBtn.disabled = true;
+    var boardAtStart = currentBoard;
+    var out = await window.TaskApi.ai("plan", { board: boardAtStart, today: TODAY });
+    aiPlanBtn.disabled = false;
+    aiPlanPanel.innerHTML = "";
+    if (out.error){ aiPlanPanel.appendChild(el("p", "ai-error", aiErrorText(out.error))); return; }
+    aiPlanPanel.appendChild(el("p", "ai-summary", out.summary));
+    var items = (out.focus || []).filter(function(f){ return tasks.some(function(t){ return t.id === f.taskId; }); });
+    if (items.length){
+      var ol = el("ol", "ai-focus");
+      items.forEach(function(f){
+        var t = tasks.find(function(x){ return x.id === f.taskId; });
+        var li = el("li", "", t.text);
+        li.appendChild(el("span", "ai-reason", f.reason));
+        ol.appendChild(li);
+      });
+      aiPlanPanel.appendChild(ol);
+    }
+    var row = el("div", "ai-row");
+    row.appendChild(el("p", "ai-note", "Suggestions from Claude. Double-check anything important."));
+    var close = el("button", "ai-link", "Close");
+    close.type = "button";
+    close.onclick = function(){ aiPlanPanel.hidden = true; };
+    row.appendChild(close);
+    aiPlanPanel.appendChild(row);
+  });
+
+  aiNotesBtn.addEventListener("click", function(){
+    aiPlanPanel.hidden = true;
+    aiNotesPanel.hidden = !aiNotesPanel.hidden;
+    if (!aiNotesPanel.hidden) aiNotesInput.focus();
+  });
+  document.getElementById("aiNotesClose").addEventListener("click", function(){
+    aiNotesPanel.hidden = true;
+  });
+
+  aiDraftBtn.addEventListener("click", async function(){
+    var notes = aiNotesInput.value.trim();
+    if (!notes) return;
+    aiDraftsEl.innerHTML = "";
+    aiDraftsEl.appendChild(el("p", "ai-status", "Claude is drafting tasks…"));
+    aiDraftBtn.disabled = true;
+    var out = await window.TaskApi.ai("extract", { notes: notes, today: TODAY });
+    aiDraftBtn.disabled = false;
+    aiDraftsEl.innerHTML = "";
+    if (out.error){ aiDraftsEl.appendChild(el("p", "ai-error", aiErrorText(out.error))); return; }
+    var drafts = out.tasks || [];
+    if (!drafts.length){ aiDraftsEl.appendChild(el("p", "ai-status", "No action items found in those notes.")); return; }
+    renderDrafts(drafts);
+  });
+
+  function renderDrafts(drafts){
+    var ul = el("ul", "ai-drafts");
+    var boxes = [];
+    drafts.forEach(function(d){
+      var li = el("li", "ai-draft");
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = true;
+      box.setAttribute("aria-label", "Add this task");
+      boxes.push(box);
+      li.appendChild(box);
+      var body = el("div", "ai-draft-body");
+      body.appendChild(el("span", "ai-draft-text", d.text));
+      var meta = el("div", "task-meta");
+      meta.appendChild(priorityBadge(d.priority));
+      var due = dueInfo({ status: "open", dueDate: d.dueDate });
+      if (due) meta.appendChild(el("span", "badge" + (due.cls ? " " + due.cls : ""), due.label));
+      body.appendChild(meta);
+      li.appendChild(body);
+      ul.appendChild(li);
+    });
+    aiDraftsEl.appendChild(ul);
+    var row = el("div", "ai-row");
+    var addBtn = el("button", "ai-btn primary");
+    addBtn.type = "button";
+    function syncCount(){
+      var n = boxes.filter(function(b){ return b.checked; }).length;
+      addBtn.textContent = "Add " + n + (n === 1 ? " task" : " tasks");
+      addBtn.disabled = !n;
+    }
+    boxes.forEach(function(b){ b.addEventListener("change", syncCount); });
+    syncCount();
+    addBtn.onclick = async function(){
+      if (!currentBoard) return;
+      addBtn.disabled = true;
+      var chosen = drafts.filter(function(d, i){ return boxes[i].checked; });
+      // Added one at a time through the normal task API, which validates
+      // each one exactly like a hand-typed task.
+      for (var i = 0; i < chosen.length; i++){
+        var d = chosen[i];
+        try {
+          await col.add({ text: d.text, status: "open", priority: d.priority, comment: "", board: currentBoard, createdDate: TODAY, doneDate: null, dueDate: d.dueDate, createdAt: Date.now() });
+        } catch(e){ /* the banner already explains it; keep going with the rest */ }
+      }
+      aiNotesInput.value = "";
+      aiDraftsEl.innerHTML = "";
+      aiDraftsEl.appendChild(el("p", "ai-status", "Added " + chosen.length + (chosen.length === 1 ? " task." : " tasks.")));
+    };
+    row.appendChild(addBtn);
+    row.appendChild(el("p", "ai-note", "Drafted by Claude. Untick anything you don't want."));
+    aiDraftsEl.appendChild(row);
+  }
+
+  // ---------- daily Slack reminder settings ----------
+  var reminderCard = document.getElementById("reminderCard");
+  var remindersBtn = document.getElementById("remindersBtn");
+  var remStatus = document.getElementById("remStatus");
+  var remChannelRow = document.getElementById("remChannelRow");
+  var remChannel = document.getElementById("remChannel");
+  var remSaved = null;            // settings as last loaded/saved
+  var remChannelsLoaded = false;
+  var REMINDER_ERRORS = {
+    rate_limited: "That's several tests in a row. Try again in a few minutes.",
+    not_set_up: "Save your settings first, then send a test.",
+    channel_required: "Pick a channel, or choose Direct message.",
+    invalid_input: "Check the time and try again.",
+    slack_disabled: "Slack reminders aren't set up on this server yet."
+  };
+  function remError(out){ return out.message || REMINDER_ERRORS[out.error] || "Slack didn't accept that. Please try again."; }
+  function remDest(){ return document.querySelector('input[name="remDest"]:checked').value; }
+  function browserTimezone(){
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch(e){ return "UTC"; }
+  }
+
+  async function loadReminderChannels(selected){
+    if (remChannelsLoaded) return;
+    remChannel.innerHTML = "";
+    var loading = document.createElement("option");
+    loading.textContent = "Loading channels…";
+    remChannel.appendChild(loading);
+    var out = await window.TaskApi.reminders.call("GET", "/channels");
+    remChannel.innerHTML = "";
+    if (out.error){ remStatus.textContent = remError(out); return; }
+    if (!out.channels.length){
+      var none = document.createElement("option");
+      none.value = "";
+      none.textContent = "No channels yet. Invite the Task Organizer bot to one you're in.";
+      remChannel.appendChild(none);
+      return;
+    }
+    out.channels.forEach(function(c){
+      var o = document.createElement("option");
+      o.value = c.id;
+      o.textContent = (c.isPrivate ? "🔒 " : "#") + c.name;
+      if (c.id === selected) o.selected = true;
+      remChannel.appendChild(o);
+    });
+    remChannelsLoaded = true;
+  }
+  function syncDestination(){
+    var channel = remDest() === "channel";
+    remChannelRow.hidden = !channel;
+    if (channel) loadReminderChannels(remSaved && remSaved.channelId);
+  }
+  document.querySelectorAll('input[name="remDest"]').forEach(function(r){ r.addEventListener("change", syncDestination); });
+
+  async function openReminders(){
+    reminderCard.hidden = false;
+    remindersBtn.setAttribute("aria-expanded", "true");
+    remStatus.textContent = "";
+    var out;
+    try { out = await window.TaskApi.reminders.get(); } catch(e){ return; }
+    document.getElementById("reminderOff").hidden = !!out.slackEnabled;
+    document.getElementById("reminderForm").hidden = !out.slackEnabled;
+    if (!out.slackEnabled) return;
+    var st = out.settings;
+    remSaved = st;
+    document.getElementById("remEnabled").checked = st.enabled;
+    document.getElementById("remTime").value = st.time;
+    document.getElementById("remWeekdays").checked = st.weekdaysOnly;
+    document.getElementById("remTz").textContent = "your time (" + (st.timezone || browserTimezone()) + ")";
+    document.querySelector('input[name="remDest"][value="' + st.destination + '"]').checked = true;
+    syncDestination();
+  }
+  function closeReminders(){
+    reminderCard.hidden = true;
+    remindersBtn.setAttribute("aria-expanded", "false");
+  }
+  remindersBtn.addEventListener("click", function(){ reminderCard.hidden ? openReminders() : closeReminders(); });
+  document.getElementById("reminderClose").addEventListener("click", closeReminders);
+
+  document.getElementById("remSave").addEventListener("click", async function(){
+    var body = {
+      enabled: document.getElementById("remEnabled").checked,
+      time: document.getElementById("remTime").value || "09:00",
+      timezone: browserTimezone(),
+      weekdaysOnly: document.getElementById("remWeekdays").checked,
+      destination: remDest(),
+      channelId: remDest() === "channel" ? (remChannel.value || null) : null
+    };
+    remStatus.textContent = "Saving…";
+    var out = await window.TaskApi.reminders.call("PUT", "", body);
+    if (out.error){ remStatus.textContent = remError(out); return; }
+    remSaved = out.settings;
+    document.getElementById("remTz").textContent = "your time (" + out.settings.timezone + ")";
+    var where = out.settings.destination === "channel" ? "#" + out.settings.channelName : "a direct message";
+    remStatus.textContent = out.settings.enabled
+      ? "Saved. You'll get it at " + out.settings.time + (out.settings.weekdaysOnly ? " on weekdays" : " every day") + ", in " + where + "."
+      : "Saved. Daily reminders are off.";
+  });
+  document.getElementById("remTest").addEventListener("click", async function(){
+    remStatus.textContent = "Sending…";
+    var out = await window.TaskApi.reminders.call("POST", "/test");
+    remStatus.textContent = out.error ? remError(out) : "Sent! Check Slack.";
+  });
+
   async function boot(){
     var me = null;
     try { me = await window.TaskApi.me(); } catch(e){ me = null; }
     if (!me){ setBanner(SERVER_ERROR_MSG); return; }
     renderUser(me);
+    initAssistant();
 
     backend = "db";
     col = window.TaskApi.collection("tasks");
@@ -2042,6 +2413,8 @@
           createdDate: data.createdDate || TODAY,
           doneDate: data.doneDate || null,
           dueDate: data.dueDate || null,
+          snoozedUntil: data.snoozedUntil || null,
+          repeat: data.repeat || null,
           createdAt: data.createdAt || 0,
           manualOrder: typeof data.manualOrder === "number" ? data.manualOrder : 0
         };

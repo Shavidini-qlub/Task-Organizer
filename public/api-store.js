@@ -135,6 +135,42 @@
     collection: function(name){
       return collections[name] || (collections[name] = new Collection(name));
     },
-    logout: function(){ return request("POST", "/auth/logout"); }
+    logout: function(){ return request("POST", "/auth/logout"); },
+    // Claude features. Failures come back as {error} for the assistant card to
+    // show, not as the app-wide "server unreachable" banner.
+    reminders: {
+      get: function(){ return request("GET", "/api/reminders"); },
+      // Like ai(): failures come back as {error, message} for the panel to show.
+      call: async function(method, path, body){
+        try {
+          var res = await fetch("/api/reminders" + path, {
+            method: method,
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch", "Content-Type": "application/json" },
+            body: body !== undefined ? JSON.stringify(body) : undefined
+          });
+          if (res.status === 401){ window.location.href = "/login"; return { error: "unauthenticated" }; }
+          if (res.status === 204) return {};
+          var data = await res.json().catch(function(){ return {}; });
+          return res.ok ? data : { error: data.error || "slack_error", message: data.message };
+        } catch (e){ return { error: "network" }; }
+      }
+    },
+    aiStatus: function(){ return request("GET", "/api/ai/status").catch(function(){ return { enabled: false }; }); },
+    ai: async function(action, body){
+      try {
+        var res = await fetch("/api/ai/" + action, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "fetch", "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        if (res.status === 401){ window.location.href = "/login"; return { error: "unauthenticated" }; }
+        var data = await res.json().catch(function(){ return {}; });
+        return res.ok ? data : { error: data.error || "ai_unavailable" };
+      } catch (e){
+        return { error: "network" };
+      }
+    }
   };
 })();

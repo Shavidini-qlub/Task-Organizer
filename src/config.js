@@ -25,6 +25,13 @@ export function loadConfig(env = process.env) {
     googleClientSecret: env.GOOGLE_CLIENT_SECRET || null,
     allowedDomain: (env.ALLOWED_EMAIL_DOMAIN || "qlub.io").toLowerCase(),
     devLogin: bool(env.DEV_LOGIN),
+    // Claude features are on only when a key from Qlub's company Anthropic
+    // account is configured.
+    anthropicApiKey: env.ANTHROPIC_API_KEY || null,
+    aiDailyLimit: Number(env.AI_DAILY_LIMIT) || 30,
+    // Daily Slack reminders are on only when the company Slack bot's token
+    // is configured.
+    slackBotToken: env.SLACK_BOT_TOKEN || null,
   };
   cfg.googleEnabled = !!(cfg.googleClientId && cfg.googleClientSecret);
 

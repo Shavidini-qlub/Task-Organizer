@@ -1,0 +1,28 @@
+# Slack app for Task Organizer's daily reminders.
+# Create it in Qlub's Slack workspace (owned by a Qlub admin, not a personal
+# workspace): api.slack.com/apps → Create New App → From an app manifest →
+# paste this file. Then Install to Workspace and copy the "Bot User OAuth
+# Token" (xoxb-...) into the SLACK_BOT_TOKEN variable on the server.
+display_information:
+  name: Task Organizer
+  description: Daily reminder of your overdue, due-today and carried-over tasks.
+  background_color: "#0e6e6b"
+features:
+  bot_user:
+    display_name: Task Organizer
+    always_online: false
+  app_home:
+    messages_tab_enabled: true
+    messages_tab_read_only_enabled: true
+oauth_config:
+  scopes:
+    bot:
+      - chat:write        # send the reminder (DM or a channel the bot is in)
+      - users:read        # needed alongside users:read.email
+      - users:read.email  # find each person by their @qlub.io email
+      - channels:read     # list public channels the bot was invited to
+      - groups:read       # list private channels the bot was invited to
+settings:
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

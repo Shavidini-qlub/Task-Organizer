@@ -94,6 +94,43 @@ test("due dates can be set, changed and cleared", async () => {
   assert.equal((await call("PATCH", `/api/tasks/${t.id}`, { dueDate: "tomorrow" })).status, 400);
 });
 
+test("snooze can be set and cleared", async () => {
+  const call = await signedIn("judy");
+  const b = (await call("POST", "/api/boards", { name: "S" })).body;
+  const t = (await call("POST", "/api/tasks", { text: "Later", board: b.id, createdDate: "2026-10-19" })).body;
+  assert.equal(t.snoozedUntil, null);
+  assert.equal((await call("PATCH", `/api/tasks/${t.id}`, { snoozedUntil: "2026-10-23" })).body.snoozedUntil, "2026-10-23");
+  assert.equal((await call("PATCH", `/api/tasks/${t.id}`, { snoozedUntil: null })).body.snoozedUntil, null);
+  assert.equal((await call("PATCH", `/api/tasks/${t.id}`, { repeat: "yearly" })).status, 400);
+});
+
+test("completing a repeating task schedules the next one; undo removes it", async () => {
+  const call = await signedIn("kim");
+  const b = (await call("POST", "/api/boards", { name: "R" })).body;
+  const t = (await call("POST", "/api/tasks", { text: "Weekly ops report", board: b.id, createdDate: "2026-10-19", dueDate: "2026-10-20", repeat: "weekly" })).body;
+  assert.equal(t.repeat, "weekly");
+
+  await call("PATCH", `/api/tasks/${t.id}`, { status: "done", doneDate: "2026-10-19" });
+  await call("PATCH", `/api/tasks/${t.id}`, { status: "done", doneDate: "2026-10-19" }); // sent twice: still one copy
+  let list = (await call("GET", "/api/tasks")).body.filter((x) => x.text === "Weekly ops report" && x.status === "open");
+  assert.equal(list.length, 1);
+  const next = list[0];
+  assert.equal(next.createdDate, "2026-10-26");
+  assert.equal(next.snoozedUntil, "2026-10-26"); // hidden until next Monday
+  assert.equal(next.dueDate, "2026-10-27"); // keeps the one-day gap to its due date
+  assert.equal(next.repeat, "weekly");
+
+  // Undo the completion: the scheduled copy goes away.
+  await call("PATCH", `/api/tasks/${t.id}`, { status: "open", doneDate: null });
+  list = (await call("GET", "/api/tasks")).body.filter((x) => x.text === "Weekly ops report");
+  assert.deepEqual(list.map((x) => [x.id, x.status]), [[t.id, "open"]]);
+
+  // Non-repeating tasks don't spawn anything.
+  const once = (await call("POST", "/api/tasks", { text: "One-off", board: b.id, createdDate: "2026-10-19" })).body;
+  await call("PATCH", `/api/tasks/${once.id}`, { status: "done", doneDate: "2026-10-19" });
+  assert.equal((await call("GET", "/api/tasks")).body.filter((x) => x.text === "One-off").length, 1);
+});
+
 test("users cannot see or change each other's data", async () => {
   const alice = await signedIn("alice2");
   const bob = await signedIn("bob");

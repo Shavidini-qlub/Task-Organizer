@@ -10,11 +10,14 @@ import { loadConfig } from "./config.js";
 import { createDb } from "./db.js";
 import { authRouter, requireAuth } from "./auth.js";
 import { apiRouter } from "./api.js";
+import { aiRouter } from "./ai.js";
+import { slackClient } from "./slack.js";
+import { remindersRouter, startReminderLoop } from "./reminders.js";
 import { log } from "./log.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-export async function createApp(cfg, db) {
+export async function createApp(cfg, db, { aiClient, slack } = {}) {
   cfg.cookieName = cfg.isProd ? "__Host-sid" : "sid";
   const app = express();
   app.disable("x-powered-by");
@@ -94,6 +97,8 @@ export async function createApp(cfg, db) {
     },
   }));
   app.use("/api", (req, res, next) => { res.setHeader("Cache-Control", "no-store"); next(); });
+  app.use("/api/ai", requireAuth, aiRouter(cfg, db, aiClient));
+  app.use("/api/reminders", requireAuth, remindersRouter(cfg, db, slack || null));
   app.use("/api", requireAuth, apiRouter(db));
 
   const page = (name) => path.join(ROOT, "views", name);
@@ -122,8 +127,10 @@ export async function createApp(cfg, db) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const cfg = loadConfig();
   const db = await createDb(cfg);
-  const app = await createApp(cfg, db);
+  const slack = cfg.slackBotToken ? slackClient(cfg.slackBotToken) : null;
+  const app = await createApp(cfg, db, { slack });
+  if (slack) startReminderLoop(db, slack, cfg);
   app.listen(cfg.port, () => {
-    log("info", "server_started", { port: cfg.port, prod: cfg.isProd, db: cfg.databaseUrl ? "postgres" : "pglite", google: cfg.googleEnabled, devLogin: !cfg.isProd && cfg.devLogin });
+    log("info", "server_started", { port: cfg.port, prod: cfg.isProd, db: cfg.databaseUrl ? "postgres" : "pglite", google: cfg.googleEnabled, ai: !!cfg.anthropicApiKey, slack: !!cfg.slackBotToken, devLogin: !cfg.isProd && cfg.devLogin });
   });
 }

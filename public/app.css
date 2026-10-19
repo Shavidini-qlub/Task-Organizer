@@ -298,6 +298,11 @@
   .badge.due-overdue{ background:var(--danger-soft); color:var(--danger); font-weight:700; }
   .badge.due-today{ background:var(--warn-soft); color:var(--warn); font-weight:700; }
   .badge.due-soon{ background:var(--accent-soft); color:var(--accent); }
+  .badge.snoozed{ background:var(--personal-soft); color:var(--personal); }
+  .badge.repeat{ background:var(--surface-2); color:var(--text-muted); }
+  .snooze-toggle{ border:none; background:none; cursor:pointer; padding:0; text-align:left; margin-top:6px; }
+  .snooze-toggle:hover{ color:var(--text); }
+  .snoozed-list li.task{ opacity:0.85; }
   .task-actions{ flex:none; display:flex; gap:4px; align-items:center; }
   .icon-btn{
     border:none; background:none; color:var(--text-faint); cursor:pointer; padding:5px; border-radius:7px;
@@ -482,16 +487,83 @@
     flex:none; height:34px; border:1px solid var(--border); border-radius:9px; background:var(--surface-2);
     color:var(--text-muted); font:500 12.5px var(--font-body); padding:0 8px; color-scheme:light dark;
   }
-  .due-edit{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:2px; }
-  .due-edit input[type="date"]{
+  .schedule-edit{
+    display:flex; flex-direction:column; gap:8px; margin-top:4px; padding:10px; border-radius:10px;
+    background:var(--surface-2); border:1px solid var(--border);
+  }
+  .sched-row{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .sched-label{ width:56px; flex:none; font:600 11px var(--font-mono); letter-spacing:0.04em; text-transform:uppercase; color:var(--text-faint); }
+  .sched-chip{
+    border:1px solid var(--border); background:var(--surface); color:var(--text); border-radius:999px;
+    font:500 12px var(--font-body); padding:4px 10px; cursor:pointer;
+  }
+  .sched-chip:hover{ border-color:var(--accent); }
+  .repeat-select{
+    height:30px; border:1px solid var(--border); border-radius:8px; background:var(--surface);
+    color:var(--text); font:500 12.5px var(--font-body); padding:0 6px; color-scheme:light dark;
+  }
+  .schedule-edit input[type="date"]{
     height:30px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2);
     color:var(--text); font:500 12.5px var(--font-body); padding:0 8px; color-scheme:light dark;
   }
-  .due-edit .due-clear{ border:none; background:none; color:var(--text-faint); font:inherit; font-size:12px; cursor:pointer; text-decoration:underline; }
+  .schedule-edit .due-clear{ border:none; background:none; color:var(--text-faint); font:inherit; font-size:12px; cursor:pointer; text-decoration:underline; }
   .icon-btn.due-btn.has{ color:var(--accent); }
   @media (max-width:520px){
     .composer{ flex-wrap:wrap; }
     .composer input[type="text"]{ flex-basis:100%; order:-1; padding:8px 4px; }
     .composer .due-pick{ flex:1; }
   }
+
+  /* ---------- Claude assistant ---------- */
+  .ai-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:10px 12px; margin-bottom:14px; display:flex; flex-direction:column; gap:10px;
+  }
+  .ai-card[hidden], .ai-panel[hidden], .ai-off[hidden]{ display:none; }
+  .ai-actions{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .ai-label{ font:600 11px var(--font-mono); letter-spacing:0.06em; text-transform:uppercase; color:var(--personal); margin-right:4px; }
+  .ai-btn{
+    border:1px solid var(--border); background:var(--surface-2); color:var(--text); border-radius:9px;
+    font:600 13px var(--font-body); padding:7px 12px; cursor:pointer;
+  }
+  .ai-btn:hover:not(:disabled){ border-color:var(--personal); }
+  .ai-btn:disabled{ opacity:0.5; cursor:default; }
+  .ai-btn.primary{ background:var(--personal); border-color:var(--personal); color:#fff; }
+  .ai-link{ border:none; background:none; color:var(--text-muted); font:inherit; font-size:13px; cursor:pointer; text-decoration:underline; }
+  .ai-off{ margin:0; font-size:12.5px; color:var(--text-faint); }
+  .ai-panel{ display:flex; flex-direction:column; gap:10px; border-top:1px solid var(--border); padding-top:10px; }
+  .ai-summary{ margin:0; font-size:14px; line-height:1.55; }
+  .ai-status{ margin:0; font-size:13px; color:var(--text-muted); }
+  .ai-error{ margin:0; font-size:13px; color:var(--danger); }
+  .ai-focus{ margin:0; padding-left:20px; display:flex; flex-direction:column; gap:8px; }
+  .ai-focus li{ font-size:14px; }
+  .ai-focus .ai-reason{ display:block; font-size:12.5px; color:var(--text-muted); margin-top:2px; }
+  .ai-note{ margin:0; font-size:11.5px; color:var(--text-faint); }
+  .ai-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .ai-notes{
+    width:100%; min-height:110px; resize:vertical; border:1px solid var(--border); border-radius:10px;
+    background:var(--surface-2); color:var(--text); font:14px/1.5 var(--font-body); padding:10px;
+  }
+  .ai-drafts{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .ai-draft{ display:flex; align-items:flex-start; gap:10px; padding:8px; border-radius:9px; background:var(--surface-2); }
+  .ai-draft input[type="checkbox"]{ margin-top:3px; accent-color:var(--personal); }
+  .ai-draft-body{ display:flex; flex-direction:column; gap:4px; min-width:0; }
+  .ai-draft-text{ font-size:14px; word-wrap:break-word; }
+
+  /* ---------- daily Slack reminder ---------- */
+  .reminder-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:12px 14px; display:flex; flex-direction:column; gap:10px; font-size:13.5px;
+  }
+  .reminder-card[hidden], #remChannelRow[hidden], #reminderForm[hidden]{ display:none; }
+  #reminderForm{ display:flex; flex-direction:column; gap:10px; }
+  .reminder-head{ display:flex; justify-content:space-between; align-items:center; }
+  .reminder-row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .reminder-row input[type="checkbox"], .reminder-row input[type="radio"]{ accent-color:var(--accent); }
+  .reminder-row input[type="time"]{
+    height:30px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2);
+    color:var(--text); font:500 13px var(--font-body); padding:0 8px; color-scheme:light dark;
+  }
+  .reminder-tz{ font-size:12px; color:var(--text-faint); }
+  .reminder-warn{ margin:0; font-size:12px; color:var(--warn); }
 

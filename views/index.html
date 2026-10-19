@@ -12,8 +12,39 @@
   <header>
     <div class="user-chip" id="userChip" hidden>
       <span class="user-name" id="userName"></span>
+      <button type="button" class="sign-out" id="remindersBtn" aria-expanded="false">🔔 Reminders</button>
       <button type="button" class="sign-out" id="signOutBtn">Sign out</button>
     </div>
+    <section class="reminder-card" id="reminderCard" hidden aria-label="Daily Slack reminder">
+      <div class="reminder-head">
+        <b>Daily Slack reminder</b>
+        <button type="button" class="ai-link" id="reminderClose">Close</button>
+      </div>
+      <p class="ai-off" id="reminderOff" hidden>Slack reminders aren't set up on this server yet.</p>
+      <div id="reminderForm">
+        <label class="reminder-row"><input type="checkbox" id="remEnabled"> Send me a daily summary of overdue, due-today and carried-over tasks</label>
+        <div class="reminder-row">
+          <span class="sched-label">Time</span>
+          <input type="time" id="remTime" value="09:00">
+          <span class="reminder-tz" id="remTz"></span>
+        </div>
+        <label class="reminder-row"><input type="checkbox" id="remWeekdays" checked> Weekdays only</label>
+        <div class="reminder-row">
+          <span class="sched-label">Send to</span>
+          <label><input type="radio" name="remDest" value="dm" checked> Direct message (private)</label>
+          <label><input type="radio" name="remDest" value="channel"> A channel</label>
+        </div>
+        <div class="reminder-row" id="remChannelRow" hidden>
+          <select id="remChannel" class="repeat-select" aria-label="Channel"></select>
+          <p class="reminder-warn">Everyone in this channel will see your task list.</p>
+        </div>
+        <div class="ai-row">
+          <button type="button" class="ai-btn primary" id="remSave">Save</button>
+          <button type="button" class="ai-btn" id="remTest">Send a test now</button>
+        </div>
+        <p class="ai-status" id="remStatus" role="status"></p>
+      </div>
+    </section>
     <div class="brand">
       <h1>My Tasks</h1>
       <div class="today" id="todayLabel"></div>
@@ -46,6 +77,23 @@
   </div>
 
   <section class="pane" id="paneToday">
+    <div class="ai-card" id="aiCard" hidden>
+      <div class="ai-actions">
+        <span class="ai-label">Claude</span>
+        <button type="button" class="ai-btn" id="aiPlanBtn">Plan my day</button>
+        <button type="button" class="ai-btn" id="aiNotesBtn">Notes → tasks</button>
+      </div>
+      <p class="ai-off" id="aiOff" hidden>Claude features are turned off on this server.</p>
+      <div class="ai-panel" id="aiPlanPanel" hidden></div>
+      <div class="ai-panel" id="aiNotesPanel" hidden>
+        <textarea class="ai-notes" id="aiNotesInput" maxlength="6000" placeholder="Paste meeting notes, an email or a Slack thread. Claude drafts the follow-ups, and you choose which to add. Don't paste customer data."></textarea>
+        <div class="ai-row">
+          <button type="button" class="ai-btn primary" id="aiDraftBtn">Draft tasks</button>
+          <button type="button" class="ai-link" id="aiNotesClose">Close</button>
+        </div>
+        <div id="aiDrafts"></div>
+      </div>
+    </div>
     <div id="todayOpenGroup"></div>
     <div id="todayDoneGroup"></div>
   </section>
