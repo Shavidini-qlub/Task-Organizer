@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sign in · Task Organizer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="login-card">
+  <h1>Task Organizer</h1>
+  <p class="login-tagline">A to-do list that never drops a task. Anything you don't finish carries over to today.</p>
+  <p class="login-error" id="loginError" hidden></p>
+  <a class="login-btn" id="googleBtn" href="/auth/google" hidden>Sign in with Google</a>
+  <button type="button" class="login-btn secondary" id="devBtn" hidden>Dev login (local only)</button>
+  <p class="login-note" id="loginNote">For Qlub employees only.</p>
+</main>
+<script src="/login.js"></script>
+</body>
+</html>

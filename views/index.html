@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Task Organizer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="user-chip" id="userChip" hidden>
+      <span class="user-name" id="userName"></span>
+      <button type="button" class="sign-out" id="signOutBtn">Sign out</button>
+    </div>
+    <div class="brand">
+      <h1>My Tasks</h1>
+      <div class="today" id="todayLabel"></div>
+    </div>
+    <div class="board-switch" id="boardSwitch"></div>
+    <div class="stats">
+      <div class="stat accent"><b id="statOpen">0</b><span>open</span></div>
+      <div class="stat good"><b id="statDoneToday">0</b><span>done today</span></div>
+      <div class="stat warn"><b id="statCarried">0</b><span>carried over</span></div>
+    </div>
+    <div class="daystrip" id="dayStrip"></div>
+  </header>
+
+  <div class="composer">
+    <button type="button" class="pri-pick" id="priPick" data-pri="low" title="Priority for new task">
+      <span class="pri-dot"></span><span id="priPickLabel">Low</span>
+    </button>
+    <input type="text" id="newTaskInput" placeholder="Add a task for today…" maxlength="300" />
+    <button class="add" id="addBtn" disabled>Add</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="today" id="tabToday">Today</button>
+    <button class="tab" data-tab="history" id="tabHistory">History</button>
+    <button class="tab" data-tab="completed" id="tabCompleted">Completed</button>
+    <button class="tab" data-tab="review" id="tabReview">Weekly Review</button>
+    <button class="tab" data-tab="monthReview" id="tabMonthReview">Monthly Review</button>
+  </div>
+
+  <section class="pane" id="paneToday">
+    <div id="todayOpenGroup"></div>
+    <div id="todayDoneGroup"></div>
+  </section>
+
+  <section class="pane" id="paneHistory" style="display:none;">
+    <div class="history-head">
+      <div class="history-nav">
+        <button id="histPrev" title="Previous day" aria-label="Previous day">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l-6 6 6 6"/></svg>
+        </button>
+        <button id="histNext" title="Next day" aria-label="Next day">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 4l6 6-6 6"/></svg>
+        </button>
+      </div>
+      <input type="date" id="histDate" />
+    </div>
+    <div id="historyGroup"></div>
+  </section>
+
+  <section class="pane" id="paneCompleted" style="display:none;">
+    <div id="completedGroup"></div>
+  </section>
+
+  <section class="pane" id="paneReview" style="display:none;">
+    <div class="review-head">
+      <div class="review-range">
+        <b id="reviewRangeLabel"></b>
+        <span id="reviewRangeSub"></span>
+      </div>
+      <div class="history-nav">
+        <button id="reviewPrev" title="Previous week" aria-label="Previous week">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l-6 6 6 6"/></svg>
+        </button>
+        <button id="reviewNext" title="Next week" aria-label="Next week">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 4l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat good clickable" id="statWeekDoneTile" role="button" tabindex="0" title="Jump to completed tasks"><b id="statWeekDone">0</b><span>completed</span><span class="stat-badge" id="statWeekDoneHigh" title="High priority among these" style="display:none;"></span></div>
+      <div class="stat warn"><b id="statWeekOpen">0</b><span>still open</span><span class="stat-badge" id="statWeekOpenHigh" title="High priority among these" style="display:none;"></span></div>
+    </div>
+    <div id="reviewOpenGroup"></div>
+    <div id="reviewDoneGroup"></div>
+    <div class="review-card">
+      <div class="group-label" style="margin:0;">Weekly review</div>
+      <textarea class="review-notes" id="reviewNotes" placeholder="What stood out this week? What should change next week?"></textarea>
+      <button class="review-mark" id="reviewMarkBtn"></button>
+    </div>
+  </section>
+
+  <section class="pane" id="paneMonthReview" style="display:none;">
+    <div class="review-head">
+      <div class="review-range">
+        <b id="monthReviewRangeLabel"></b>
+        <span id="monthReviewRangeSub"></span>
+      </div>
+      <div class="history-nav">
+        <button id="monthReviewPrev" title="Previous month" aria-label="Previous month">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 4l-6 6 6 6"/></svg>
+        </button>
+        <button id="monthReviewNext" title="Next month" aria-label="Next month">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 4l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat good clickable" id="statMonthDoneTile" role="button" tabindex="0" title="Jump to completed tasks"><b id="statMonthDone">0</b><span>completed</span><span class="stat-badge" id="statMonthDoneHigh" title="High priority among these" style="display:none;"></span></div>
+      <div class="stat warn"><b id="statMonthOpen">0</b><span>still open</span><span class="stat-badge" id="statMonthOpenHigh" title="High priority among these" style="display:none;"></span></div>
+    </div>
+    <div class="cal-wrap">
+      <div class="cal-dow-row">
+        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+      </div>
+      <div class="cal-grid" id="monthReviewCalGrid"></div>
+    </div>
+    <div id="monthReviewDayDetail"></div>
+    <div class="review-card">
+      <div class="group-label" style="margin:0;">Monthly review</div>
+      <textarea class="review-notes" id="monthReviewNotes" placeholder="What stood out this month? What should change next month?"></textarea>
+      <button class="review-mark" id="monthReviewMarkBtn"></button>
+    </div>
+  </section>
+
+  <div class="status-banner" id="statusBanner" style="display:none;"></div>
+  <footer class="note">Unfinished tasks stay visible until you check them off — nothing here gets deleted on its own.</footer>
+  <div id="modalRoot"></div>
+  <div id="priorityMenuRoot"></div>
+  <div id="boardMoveMenuRoot"></div>
+</div>
+
+<script src="/api-store.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>
